@@ -1,0 +1,39 @@
+# Demo (b) — Dry vs humid split-screen, longer run.
+# Used by 'scripts/sweep_humidity.py --steps 200' or attached via run_attach_demo
+# at the home setup with --steps 250 once on RTX 4080.
+#
+# Codex feedback (round 3): 30 steps too short for visual differentiation;
+# need ≥ 200 steps for statistical separation between h=0.0 and h=0.6.
+
+max_particles: 50000
+n_active_particles: 8000
+grid_res: 64
+domain_size: 1.0
+
+particle_radius: 0.005
+mass_per_particle: 1.0e-4
+
+cloth_nx: 32
+cloth_ny: 32
+cloth_size: 0.6
+cloth_origin: [0.20, 0.50, 0.20]
+cloth_density: 0.3
+
+# Same drop geometry as demo_a; let particles fall longer
+sand_box_min: [0.30, 0.65, 0.30]
+sand_box_max: [0.70, 0.85, 0.70]
+
+dt: 1.0e-3
+n_substeps: 4
+duration_seconds: 30.0     # 30k frames at 1ms — but typical use: --steps 200 (200 ms sim)
+
+pinned_corners: [true, true, true, true]
+
+jkr:
+  gamma_0: 0.08
+  beta: 0.20
+  humidity: 0.6           # override per-run; default is the "humid" side
+  sigma_max: 0.10         # raised slightly to delay σ-saturation cutoff observed in W=0.3 sweep
+  k_reduced: 1.0e+6
+  lam: 0.005
+  contact_radius: 0.020

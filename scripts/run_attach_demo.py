@@ -1,11 +1,12 @@
-"""Step 5 — JKR phase-transition attach demo (Operator A).
+"""Step 5 — JKR phase-transition attach demo (Operator A) + B1 baseline.
 
 Sand falls onto a horizontal cloth pinned at four corners, sticks per JKR
-criterion, accumulates as σ. Audit logs total mass+momentum for conservation
-verification.
+criterion (or heuristic, controlled by --baseline), accumulates as σ.
+Audit logs total mass+momentum for conservation verification.
 
 Run:
     python3 scripts/run_attach_demo.py [--config data/configs/demo_a_lying.yaml] [--out results/attach_demo_log.npz]
+    python3 scripts/run_attach_demo.py --baseline heuristic   # B1 ablation baseline
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.cloth.xpbd import ClothSolver
 from src.coupling.attach import AttachOperator
+from src.coupling.attach_heuristic import HeuristicAttachOperator
 from src.coupling.contact import ContactSolver
 from src.mpm.grid import Grid
 from src.mpm.particles import (
@@ -43,6 +45,12 @@ def main() -> int:
     parser.add_argument("--out", type=str, default="results/attach_demo_log.npz")
     parser.add_argument("--steps", type=int, default=None)
     parser.add_argument("--cpu", action="store_true")
+    parser.add_argument(
+        "--baseline",
+        choices=["jkr", "heuristic"],
+        default="jkr",
+        help="Operator to use: 'jkr' (default, Operator A) or 'heuristic' (B1 ablation)",
+    )
     args = parser.parse_args()
 
     if args.cpu:
@@ -92,19 +100,34 @@ def main() -> int:
         if pin:
             cloth.pin_vertices(pin)
 
-    # Coupling — contact + Operator A attach
+    # Coupling — contact + attach operator (JKR or heuristic B1 baseline)
     contact = ContactSolver(particles, cloth, contact_radius=cfg.jkr.contact_radius)
-    attach = AttachOperator(
-        particles,
-        cloth,
-        gamma_0=cfg.jkr.gamma_0,
-        beta=cfg.jkr.beta,
-        humidity=cfg.jkr.humidity,
-        sigma_max=cfg.jkr.sigma_max,
-        k_reduced=cfg.jkr.k_reduced,
-        lam=cfg.jkr.lam,
-        contact_radius=cfg.jkr.contact_radius,
-    )
+    if args.baseline == "heuristic":
+        attach = HeuristicAttachOperator(
+            particles,
+            cloth,
+            gamma_0=cfg.jkr.gamma_0,
+            beta=cfg.jkr.beta,
+            humidity=cfg.jkr.humidity,
+            sigma_max=cfg.jkr.sigma_max,
+            k_reduced=cfg.jkr.k_reduced,
+            lam=cfg.jkr.lam,
+            contact_radius=cfg.jkr.contact_radius,
+        )
+        print("[attach_demo] Using B1 heuristic-stick baseline operator")
+    else:
+        attach = AttachOperator(
+            particles,
+            cloth,
+            gamma_0=cfg.jkr.gamma_0,
+            beta=cfg.jkr.beta,
+            humidity=cfg.jkr.humidity,
+            sigma_max=cfg.jkr.sigma_max,
+            k_reduced=cfg.jkr.k_reduced,
+            lam=cfg.jkr.lam,
+            contact_radius=cfg.jkr.contact_radius,
+        )
+        print("[attach_demo] Using JKR Operator A (default)")
 
     M0 = total_mass(particles, cloth.triangles)
     P0 = total_linear_momentum(particles, cloth.vertices)
