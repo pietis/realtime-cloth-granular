@@ -28,15 +28,13 @@ def aggregate_sigma_to_vertices(
         ti.atomic_add(sigma_per_vertex[v2], s / 3.0)
 
 
-# Pre-allocated scratch buffer keyed by (n_vertices) so we don't recreate fields.
-_sigma_buf_cache: dict[int, "ti.field"] = {}
-
-
 def per_vertex_sigma_numpy(cloth) -> np.ndarray:
-    """Convenience: aggregate σ to per-vertex and return numpy array."""
-    n = cloth.n_vertices
-    if n not in _sigma_buf_cache:
-        _sigma_buf_cache[n] = ti.field(ti.f32, shape=n)
-    buf = _sigma_buf_cache[n]
+    """Convenience: aggregate σ to per-vertex and return numpy array.
+
+    Allocates a fresh scratch field each call — caching breaks if ti.init() is
+    called again between calls (e.g. parameter sweeps), and Taichi alloc cost
+    is negligible compared to the aggregation kernel.
+    """
+    buf = ti.field(ti.f32, shape=cloth.n_vertices)
     aggregate_sigma_to_vertices(cloth.vertices, cloth.triangles, buf)
     return buf.to_numpy()
