@@ -1,0 +1,60 @@
+# JKR-dominant regime config
+#
+# Goal: get out of "lucky impact" regime where E_kin >> W_adh and JKR threshold
+# is trivially satisfied/violated by geometric noise.
+#
+# Strategy:
+#   1. Drop particles from VERY close to cloth (low impact velocity v_n)
+#   2. Boost γ_0 by ~10× to "highly adhesive" surface (rationale: simulating
+#      humid wet-sand or sticky surface — physically realistic for damp cloth
+#      + fine grit, also a common DEM calibration value).
+#   3. Reduce mass slightly (finer grit)
+#
+# Target: E_kin_n / W_adh ≈ 1 (within an order of magnitude) so the JKR
+# threshold *actually decides* attach vs. bounce, not geometric noise.
+#
+# Physical meaning: this represents *gentle deposit* of fine wet sand onto
+# soft cloth — the regime where adhesion physics dominates inertial physics.
+
+max_particles: 50000
+n_active_particles: 5000
+grid_res: 64
+domain_size: 1.0
+
+# Fine grains (representing dust/grit, not full sand)
+particle_radius: 0.003                 # 3 mm  (was 5 mm)
+mass_per_particle: 5.0e-6              # 5 µg — fine dust, much lighter than sand
+                                       # (W_adh ∝ R^(7/3), independent of m;
+                                       #  but E_kin = ½ m v² so lighter ⇒ smaller E_kin)
+
+cloth_nx: 24
+cloth_ny: 24
+cloth_size: 0.5
+cloth_origin: [0.25, 0.50, 0.25]
+cloth_density: 0.3
+
+# Spawn farther above cloth so impact velocity covers a wider range
+# (Fast particles fail JKR ⇒ bounce; slow particles pass JKR ⇒ attach.
+#  This gives a clean MIXED-regime ratio in the 0.4–0.7 range.)
+# Free-fall over 30 mm gives v ≈ √(2·9.8·0.03) ≈ 0.77 m/s
+sand_box_min: [0.30, 0.530, 0.30]      # 30 mm above cloth
+sand_box_max: [0.70, 0.560, 0.70]      # 30 mm slab — vertical spread of impact times
+
+dt: 1.0e-3
+n_substeps: 4
+duration_seconds: 5.0
+
+pinned_corners: [true, true, true, true]
+
+# JKR parameters tuned to put E_kin_n in the same order of magnitude as W_adh.
+# At m=5e-6 kg, v=0.3 m/s ⇒ E_kin ≈ 2.25e-7 J.
+# JKR W_adh(R=3mm, γ=2.0, K=1e5) ≈ 7.8e-8 J  ⇒ E_kin/W_adh ≈ 3 (close to balance).
+# Some impacts pass, some fail — JKR actually decides.
+jkr:
+  gamma_0: 2.0                         # strongly adhesive surface
+  beta: 1.0                            # bigger capillary slope
+  humidity: 0.5
+  sigma_max: 0.02
+  k_reduced: 1.0e+5                    # softer Hertz contact
+  lam: 0.003                           # falloff 3 mm
+  contact_radius: 0.008

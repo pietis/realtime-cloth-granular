@@ -15,14 +15,15 @@ import math
 import numpy as np
 import taichi as ti
 
-# JKR pull-off work prefactor — geometric coefficient from Johnson 1971.
-_JKR_PREFACTOR = 15.0 / (8.0 * math.pi)
+_PI = math.pi
 
 
 def jkr_pulloff_work_np(radius: float, gamma: float, k_reduced: float) -> float:
     """JKR pull-off work in joules (numpy reference).
 
-    W_adh = (15 / 8π) · π R² · 2γ · (3π γ R / 4 K)^(1/3)
+    W = 2γ
+    a_c = (9π R² W / 8K)^(1/3)
+    E_sep = (2/5)π W a_c²
 
     Args:
         radius:    grain radius R (m)
@@ -34,16 +35,24 @@ def jkr_pulloff_work_np(radius: float, gamma: float, k_reduced: float) -> float:
     """
     if radius <= 0 or gamma <= 0 or k_reduced <= 0:
         return 0.0
-    factor = (3.0 * math.pi * gamma * radius / (4.0 * k_reduced)) ** (1.0 / 3.0)
-    return _JKR_PREFACTOR * math.pi * radius * radius * 2.0 * gamma * factor
+    contact_radius = (
+        9.0 * _PI * gamma * radius * radius / (4.0 * k_reduced)
+    ) ** (1.0 / 3.0)
+    return (4.0 * _PI * gamma / 5.0) * contact_radius * contact_radius
 
 
 def jkr_pulloff_work_array(
     radius: np.ndarray, gamma: np.ndarray, k_reduced: np.ndarray
 ) -> np.ndarray:
     """Vectorized numpy version for parameter sweeps."""
-    factor = np.cbrt(3.0 * math.pi * gamma * radius / (4.0 * k_reduced))
-    return _JKR_PREFACTOR * math.pi * radius * radius * 2.0 * gamma * factor
+    radius, gamma, k_reduced = np.broadcast_arrays(radius, gamma, k_reduced)
+    result = np.zeros_like(radius, dtype=np.result_type(radius, gamma, k_reduced, float))
+    mask = (radius > 0) & (gamma > 0) & (k_reduced > 0)
+    contact_radius = np.cbrt(
+        9.0 * _PI * gamma[mask] * radius[mask] * radius[mask] / (4.0 * k_reduced[mask])
+    )
+    result[mask] = (4.0 * _PI * gamma[mask] / 5.0) * contact_radius * contact_radius
+    return result
 
 
 def gamma_humid_np(
@@ -71,8 +80,11 @@ def jkr_pulloff_work(radius, gamma, k_reduced):
     """JKR pull-off work — Taichi @ti.func form (untyped, inferred at call site)."""
     result = 0.0
     if radius > 0.0 and gamma > 0.0 and k_reduced > 0.0:
-        factor = ti.pow(3.0 * 3.14159265 * gamma * radius / (4.0 * k_reduced), 1.0 / 3.0)
-        result = (15.0 / (8.0 * 3.14159265)) * 3.14159265 * radius * radius * 2.0 * gamma * factor
+        contact_radius = ti.pow(
+            9.0 * _PI * gamma * radius * radius / (4.0 * k_reduced),
+            1.0 / 3.0,
+        )
+        result = (4.0 * _PI * gamma / 5.0) * contact_radius * contact_radius
     return result
 
 

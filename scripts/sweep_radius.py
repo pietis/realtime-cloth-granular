@@ -21,7 +21,8 @@ import taichi as ti
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
-def run_one_radius(radius: float, steps: int, cpu: bool, humidity: float = 0.6) -> dict:
+def run_one_radius(radius: float, steps: int, cpu: bool, humidity: float = 0.6,
+                   config_name: str = "demo_a_lying.yaml") -> dict:
     if cpu:
         ti.init(arch=ti.cpu)
     else:
@@ -45,10 +46,14 @@ def run_one_radius(radius: float, steps: int, cpu: bool, humidity: float = 0.6) 
     from src.utils.visualize import per_vertex_sigma_numpy
 
     repo = Path(__file__).resolve().parent.parent
-    cfg = load_scene_config(repo / "data" / "configs" / "demo_a_lying.yaml")
+    cfg = load_scene_config(repo / "data" / "configs" / config_name)
     cfg.particle_radius = radius
     cfg.jkr.humidity = humidity
-    cfg.jkr.contact_radius = max(2 * radius, cfg.jkr.contact_radius)
+    # IMPORTANT: hold contact_radius and λ fixed across the sweep so the
+    # only thing that varies is R itself. If contact_radius scales with R,
+    # larger particles have more far-distance candidates that decay via
+    # exp(-d/λ) and the slope of attach-fraction vs R gets flattened.
+    # (Codex feedback after first sweep showed slope=0.27 instead of theoretical 2.33.)
 
     particles = make_particle_field(cfg.max_particles)
     init_particles_box(
@@ -88,21 +93,28 @@ def run_one_radius(radius: float, steps: int, cpu: bool, humidity: float = 0.6) 
     M0 = float(total_mass(particles, cloth.triangles))
     sub_dt = cfg.dt / cfg.n_substeps
     n_attached_cum = 0
+    n_candidates_cum = 0
+    has_diag = hasattr(attach_op, "candidate_count")
     for step in range(steps):
         attach_op.reset_audit()
         for _ in range(cfg.n_substeps):
             sand.step(sub_dt)
             cloth.step(sub_dt)
+            attach_op.step()        # JKR before contact (read pre-bounce velocity)
             contact.solve()
-            attach_op.step()
         n_attached_cum += int(attach_op.attach_event_count[None])
+        if has_diag:
+            n_candidates_cum += int(attach_op.candidate_count[None])
 
     M_final = float(total_mass(particles, cloth.triangles))
     sigma = per_vertex_sigma_numpy(cloth)
+    commit_ratio = (n_attached_cum / max(n_candidates_cum, 1)) if has_diag else float("nan")
 
     return {
         "radius": radius,
         "n_attached": int(n_attached_cum),
+        "n_candidates": int(n_candidates_cum),
+        "commit_ratio": float(commit_ratio),
         "n_active_initial": int(cfg.n_active_particles),
         "attach_fraction": n_attached_cum / max(cfg.n_active_particles, 1),
         "mass_drift": abs(M_final - M0) / M0 if M0 > 0 else 0.0,
@@ -118,6 +130,8 @@ def main() -> int:
                         help="Comma-separated grain radii in meters")
     parser.add_argument("--humidity", type=float, default=0.6)
     parser.add_argument("--cpu", action="store_true")
+    parser.add_argument("--config", type=str, default="demo_a_lying.yaml",
+                        help="Config name in data/configs/ (e.g. jkr_dominant.yaml)")
     parser.add_argument("--out", default="results/radius_sweep")
     args = parser.parse_args()
 
@@ -128,9 +142,10 @@ def main() -> int:
     rows = []
     for r in r_list:
         print(f"\n==== Running R = {r*1e3:.2f} mm ====")
-        row = run_one_radius(r, args.steps, args.cpu, args.humidity)
+        row = run_one_radius(r, args.steps, args.cpu, args.humidity, args.config)
         print(f"  attached: {row['n_attached']}, fraction: {row['attach_fraction']:.4f}, "
-              f"σ_total: {row['sigma_total']:.4e}, ΔM/M₀: {row['mass_drift']:.2e}")
+              f"σ_total: {row['sigma_total']:.4e}, ΔM/M₀: {row['mass_drift']:.2e}, "
+              f"commit_ratio: {row['commit_ratio']:.3f}")
         rows.append(row)
 
     R = np.array([r["radius"] for r in rows])

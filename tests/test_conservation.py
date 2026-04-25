@@ -7,6 +7,7 @@ JKR threshold so attachment fires deterministically. Total mass before == after.
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -18,7 +19,7 @@ def test_attach_preserves_total_mass():
     from src.cloth.xpbd import ClothSolver
     from src.coupling.attach import AttachOperator
     from src.mpm.particles import init_particles_box, make_particle_field
-    from src.utils.conservation import total_mass
+    from src.utils.conservation import total_linear_momentum, total_mass
 
     ti.init(arch=ti.cpu)
 
@@ -55,9 +56,11 @@ def test_attach_preserves_total_mass():
     )
 
     M_before = float(total_mass(particles, cloth.triangles))
+    P_before = np.array(total_linear_momentum(particles, cloth.triangles, cloth.vertices))
     attach_op.reset_audit()
     attach_op.step()
     M_after = float(total_mass(particles, cloth.triangles))
+    P_after = np.array(total_linear_momentum(particles, cloth.triangles, cloth.vertices))
 
     # Attach should have happened (4 particles eligible)
     n_attached = int(attach_op.attach_event_count[None])
@@ -66,4 +69,10 @@ def test_attach_preserves_total_mass():
     # Total mass conserved (single-precision tolerance)
     assert abs(M_before - M_after) / M_before < 1e-5, (
         f"mass not conserved: before={M_before}, after={M_after}, attached={n_attached}"
+    )
+
+    p_ref = max(float(np.linalg.norm(P_before)), 1e-12)
+    p_err = float(np.linalg.norm(P_after - P_before)) / p_ref
+    assert p_err < 1e-5, (
+        f"momentum not conserved: before={P_before}, after={P_after}, attached={n_attached}"
     )

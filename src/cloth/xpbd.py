@@ -53,6 +53,7 @@ class ClothSolver:
 
         # Per-vertex tmp for σ aggregation in update_inv_mass
         self.added_sigma = ti.field(ti.f32, shape=self.n_vertices)
+        self.prev_added_sigma = ti.field(ti.f32, shape=self.n_vertices)
 
         # Distance constraints (edges)
         # Built once at init; stored as flat fields
@@ -188,6 +189,11 @@ class ClothSolver:
             self.vertices[v].pred = self.vertices[v].pos + dt * self.vertices[v].vel
 
     @ti.kernel
+    def _snapshot_prev_sigma(self):
+        for v in range(self.n_vertices):
+            self.prev_added_sigma[v] = self.added_sigma[v]
+
+    @ti.kernel
     def update_inv_mass(self):
         """inv_mass = 1 / (vertex_mass + Σ_T (σ_front + σ_back)·w_vT).
 
@@ -214,14 +220,15 @@ class ClothSolver:
 
     @ti.kernel
     def reconcile_velocity_with_p_sigma(self):
-        """v_eff = (m·v + p_σ) / (m + σ_total) — absorb reservoir momentum then reset."""
+        """Absorb reservoir momentum while preserving loaded cloth momentum."""
         for v in range(self.n_vertices):
             if self.vertices[v].fixed == 1:
                 continue
-            m_eff = 1.0 / ti.max(self.vertices[v].inv_mass, 1e-12)
+            m_eff_old = self.vertices[v].mass + self.prev_added_sigma[v]
+            m_eff_new = self.vertices[v].mass + self.added_sigma[v]
             self.vertices[v].vel = (
-                self.vertices[v].mass * self.vertices[v].vel + self.vertices[v].p_sigma
-            ) / ti.max(m_eff, 1e-12)
+                m_eff_old * self.vertices[v].vel + self.vertices[v].p_sigma
+            ) / ti.max(m_eff_new, 1e-12)
             self.vertices[v].p_sigma = ti.Vector([0.0, 0.0, 0.0])
 
     @ti.kernel
@@ -263,6 +270,7 @@ class ClothSolver:
 
     def step(self, dt: float, gravity_y: float = -9.8):
         """One full XPBD step (predict → solve → update)."""
+        self._snapshot_prev_sigma()
         self.update_inv_mass()
         self.reconcile_velocity_with_p_sigma()
         self.predict(dt, ti.Vector([0.0, gravity_y, 0.0]))

@@ -22,7 +22,8 @@ import taichi as ti
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
-def run_one_humidity(humidity: float, steps: int, cpu: bool) -> dict:
+def run_one_humidity(humidity: float, steps: int, cpu: bool,
+                     config_name: str = "demo_a_lying.yaml") -> dict:
     """Run a single attach demo at the given humidity and return summary stats."""
     # Taichi must be re-init'd between runs to clear allocated fields.
     if cpu:
@@ -48,7 +49,7 @@ def run_one_humidity(humidity: float, steps: int, cpu: bool) -> dict:
     from src.utils.visualize import per_vertex_sigma_numpy
 
     repo = Path(__file__).resolve().parent.parent
-    cfg = load_scene_config(repo / "data" / "configs" / "demo_a_lying.yaml")
+    cfg = load_scene_config(repo / "data" / "configs" / config_name)
     cfg.jkr.humidity = humidity   # override sweep variable
 
     particles = make_particle_field(cfg.max_particles)
@@ -90,21 +91,28 @@ def run_one_humidity(humidity: float, steps: int, cpu: bool) -> dict:
     M0 = float(total_mass(particles, cloth.triangles))
     sub_dt = cfg.dt / cfg.n_substeps
     n_attached_cum = 0
+    n_candidates_cum = 0
+    has_diag = hasattr(attach_op, "candidate_count")
     for step in range(steps):
         attach_op.reset_audit()
         for _ in range(cfg.n_substeps):
             sand.step(sub_dt)
             cloth.step(sub_dt)
-            contact.solve()
             attach_op.step()
+            contact.solve()
         n_attached_cum += int(attach_op.attach_event_count[None])
+        if has_diag:
+            n_candidates_cum += int(attach_op.candidate_count[None])
 
     M_final = float(total_mass(particles, cloth.triangles))
     sigma = per_vertex_sigma_numpy(cloth)
 
+    commit_ratio = (n_attached_cum / max(n_candidates_cum, 1)) if has_diag else float("nan")
     return {
         "humidity": humidity,
         "n_attached": int(n_attached_cum),
+        "n_candidates": int(n_candidates_cum),
+        "commit_ratio": float(commit_ratio),
         "n_active_final": int(count_active(particles)),
         "n_active_initial": int(cfg.n_active_particles),
         "mass_drift": abs(M_final - M0) / M0 if M0 > 0 else 0.0,
@@ -119,6 +127,7 @@ def main() -> int:
     parser.add_argument("--steps", type=int, default=40)
     parser.add_argument("--humidities", type=str, default="0.0,0.25,0.5,0.75,1.0")
     parser.add_argument("--cpu", action="store_true")
+    parser.add_argument("--config", type=str, default="demo_a_lying.yaml")
     parser.add_argument("--out", default="results/humidity_sweep")
     args = parser.parse_args()
 
@@ -129,8 +138,9 @@ def main() -> int:
     rows = []
     for h in h_list:
         print(f"\n==== Running humidity = {h} ====")
-        row = run_one_humidity(h, args.steps, args.cpu)
-        print(f"  attached: {row['n_attached']}, sigma_total: {row['sigma_total']:.4e}, mass_drift: {row['mass_drift']:.2e}")
+        row = run_one_humidity(h, args.steps, args.cpu, args.config)
+        print(f"  attached: {row['n_attached']} (cand={row['n_candidates']}, ratio={row['commit_ratio']:.3f}), "
+              f"σ_total: {row['sigma_total']:.4e}, ΔM/M₀: {row['mass_drift']:.2e}")
         rows.append(row)
 
     h_arr = np.array([r["humidity"] for r in rows])

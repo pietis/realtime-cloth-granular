@@ -61,12 +61,22 @@ class AttachOperator:
         self.mass_attached_this_frame = ti.field(ti.f32, shape=())
         self.momentum_attached_this_frame = ti.Vector.field(3, ti.f32, shape=())
         self.attach_event_count = ti.field(ti.i32, shape=())
+        # Diagnostic: how many particles were close-enough candidates vs how
+        # many actually committed an attach. The ratio commits/candidates tells
+        # whether JKR is the rate-limiter (low ratio) or contact rate is
+        # (high ratio, "lucky impact" regime).
+        self.candidate_count = ti.field(ti.i32, shape=())
+        self.kin_energy_avg = ti.field(ti.f32, shape=())   # avg of E_kin_n over candidates this frame
+        self.threshold_avg = ti.field(ti.f32, shape=())    # avg of W_adh·exp(-d/λ) over candidates
 
     @ti.kernel
     def reset_audit(self):
         self.mass_attached_this_frame[None] = 0.0
         self.momentum_attached_this_frame[None] = ti.Vector([0.0, 0.0, 0.0])
         self.attach_event_count[None] = 0
+        self.candidate_count[None] = 0
+        self.kin_energy_avg[None] = 0.0
+        self.threshold_avg[None] = 0.0
 
     @ti.kernel
     def step(self):
@@ -110,7 +120,21 @@ class AttachOperator:
                 sigma_local = self.cloth.triangles[best_t].sigma_back
             gamma_T = gamma_humid(self.gamma_0, self.beta, self.humidity, sigma_local, self.sigma_max)
             W_adh = jkr_pulloff_work(self.particles[p].radius, gamma_T, self.k_reduced)
-            threshold = W_adh * ti.exp(-best_d / ti.max(self.lam, 1e-9))
+            # Falloff uses surface-to-surface gap, not center distance.
+            # For particle radius R, gap = max(0, best_d - R). At contact gap≈0,
+            # so exp(-gap/λ) ≈ 1 and W_adh dominates. Without this, larger R
+            # particles register at far center-distances and exp(-d/λ) wipes
+            # out the R^(7/3) advantage from W_adh.
+            gap = ti.max(0.0, best_d - self.particles[p].radius)
+            threshold = W_adh * ti.exp(-gap / ti.max(self.lam, 1e-9))
+
+            # Diagnostic: this particle was a *candidate* — within contact distance
+            # AND with sigma_local headroom. Tracks "JKR-rate vs contact-rate"
+            # regime (low commit/candidate ⇒ JKR-dominant, high ⇒ contact-rate).
+            if sigma_local < self.sigma_max:
+                ti.atomic_add(self.candidate_count[None], 1)
+                ti.atomic_add(self.kin_energy_avg[None], E_kin_n)
+                ti.atomic_add(self.threshold_avg[None], threshold)
 
             if E_kin_n < threshold and sigma_local < self.sigma_max:
                 # Commit attach

@@ -22,14 +22,14 @@ def test_jkr_closed_form_basic():
     K = 1.0e6        # 1 MPa reduced modulus
     w = jkr_pulloff_work_np(R, gamma, K)
 
-    # Hand check: prefactor = 15/(8π) ≈ 0.5968
-    # factor    = (3π · 0.05 · 1e-3 / 4e6)^(1/3) ≈ (1.178e-10)^(1/3) ≈ 4.91e-4
-    # core      = π · R² · 2γ ≈ π · 1e-6 · 0.1 ≈ 3.14e-7
-    # total ≈ 0.5968 · 3.14e-7 · 4.91e-4 ≈ 9.20e-11
-    expected = (15.0 / (8.0 * math.pi)) * math.pi * R * R * 2.0 * gamma * \
-               (3.0 * math.pi * gamma * R / (4.0 * K)) ** (1.0 / 3.0)
+    # Hand check:
+    # a_c = (9πγR² / 4K)^(1/3) ≈ 5.20e-4 m
+    # E_sep = (4πγ/5) a_c² ≈ 6.28e-10 J
+    expected = (4.0 * math.pi * gamma / 5.0) * (
+        9.0 * math.pi * gamma * R * R / (4.0 * K)
+    ) ** (2.0 / 3.0)
     assert math.isclose(w, expected, rel_tol=1e-12)
-    assert 1e-12 < w < 1e-9
+    assert 1e-11 < w < 1e-8
 
 
 def test_jkr_taichi_matches_numpy():
@@ -77,7 +77,7 @@ def test_humidity_increases_gamma():
 
 
 def test_jkr_monotonic_in_radius():
-    """W_adh ∝ R^(7/3) ⇒ strictly monotone in R when γ, K fixed."""
+    """W_adh ∝ R^(4/3) ⇒ strictly monotone in R when γ, K fixed."""
     from src.coupling.jkr import jkr_pulloff_work_array
 
     R = np.array([5e-4, 1e-3, 2e-3, 5e-3, 1e-2])
@@ -85,3 +85,11 @@ def test_jkr_monotonic_in_radius():
     K = np.full_like(R, 1e6)
     w = jkr_pulloff_work_array(R, gamma, K)
     assert np.all(np.diff(w) > 0), f"non-monotonic: {w}"
+
+
+def test_jkr_dimensions():
+    """Typical parameters should produce joule-scale separation work."""
+    from src.coupling.jkr import jkr_pulloff_work_np
+
+    w = jkr_pulloff_work_np(1.0e-3, 0.05, 1.0e6)
+    assert 1e-12 < w < 1e-7

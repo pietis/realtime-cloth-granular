@@ -141,18 +141,30 @@ def main() -> int:
         "mass_drift": [],
         "momentum_drift_norm": [],
         "attach_events_per_step": [],
+        "candidates_per_step": [],
+        "commit_ratio": [],
+        "kin_energy_avg": [],
+        "threshold_avg": [],
     }
 
     n_attached_cum = 0
+    n_candidates_cum = 0
     sub_dt = cfg.dt / cfg.n_substeps
+    has_diag = hasattr(attach, "candidate_count")
     for step in range(n_steps):
         attach.reset_audit()
         for _ in range(cfg.n_substeps):
             sand.step(sub_dt)
             cloth.step(sub_dt)
-            contact.solve()
-            attach.step()
+            # Order matters: attach must read PRE-contact velocity.
+            # Otherwise contact.solve() bounces particles to near-zero v_n,
+            # and attach sees E_kin ≈ 0 ⇒ JKR threshold is trivially passed
+            # (every candidate commits, "lucky impact" pseudo-regime).
+            attach.step()           # JKR phase-transition decides first
+            contact.solve()         # remaining (non-attached) particles bounce
         n_attached_cum += attach.attach_event_count[None]
+        if has_diag:
+            n_candidates_cum += attach.candidate_count[None]
 
         if step % 25 == 0:
             n_a = count_active(particles)
@@ -160,15 +172,27 @@ def main() -> int:
             P_now = total_linear_momentum(particles, cloth.vertices)
             err_M = relative_error(M_now, M0)
             err_P = float((P_now - P0).norm() / max(P0.norm(), 1.0))
+            cand = int(attach.candidate_count[None]) if has_diag else 0
+            ratio = (attach.attach_event_count[None] / max(cand, 1)) if has_diag else 0.0
+            kin_avg = float(attach.kin_energy_avg[None] / max(cand, 1)) if has_diag else 0.0
+            thr_avg = float(attach.threshold_avg[None] / max(cand, 1)) if has_diag else 0.0
             log["step"].append(step)
             log["n_active"].append(int(n_a))
             log["n_attached_total"].append(int(n_attached_cum))
             log["mass_drift"].append(err_M)
             log["momentum_drift_norm"].append(err_P)
             log["attach_events_per_step"].append(int(attach.attach_event_count[None]))
+            log["candidates_per_step"].append(cand)
+            log["commit_ratio"].append(ratio)
+            log["kin_energy_avg"].append(kin_avg)
+            log["threshold_avg"].append(thr_avg)
+            diag_str = ""
+            if has_diag and cand > 0:
+                diag_str = (f"  cand={cand:5d}  ratio={ratio:.3f}  "
+                            f"E_kin/W_adh≈{kin_avg / max(thr_avg, 1e-30):.2e}")
             print(
                 f"  step {step:5d}/{n_steps}  active={n_a:5d}  attached_cum={n_attached_cum:5d}  "
-                f"|ΔM|/M0={err_M:.2e}  events_this_substep={attach.attach_event_count[None]}"
+                f"|ΔM|/M0={err_M:.2e}  events_this_substep={attach.attach_event_count[None]}{diag_str}"
             )
 
     # Save final log + per-vertex σ snapshot
@@ -183,6 +207,10 @@ def main() -> int:
         mass_drift=np.array(log["mass_drift"]),
         momentum_drift_norm=np.array(log["momentum_drift_norm"]),
         attach_events_per_step=np.array(log["attach_events_per_step"]),
+        candidates_per_step=np.array(log["candidates_per_step"]),
+        commit_ratio=np.array(log["commit_ratio"]),
+        kin_energy_avg=np.array(log["kin_energy_avg"]),
+        threshold_avg=np.array(log["threshold_avg"]),
         sigma_per_vertex=sigma_snapshot,
         cloth_n_x=cfg.cloth_nx,
         cloth_n_y=cfg.cloth_ny,
@@ -190,6 +218,12 @@ def main() -> int:
     print(f"[OK] log saved to {out_path}")
     print(f"  total attached: {n_attached_cum}, sigma min/max/mean: "
           f"{sigma_snapshot.min():.4e} / {sigma_snapshot.max():.4e} / {sigma_snapshot.mean():.4e}")
+    if has_diag and n_candidates_cum > 0:
+        overall_ratio = n_attached_cum / n_candidates_cum
+        regime = ("JKR-DOMINANT" if overall_ratio < 0.4 else
+                  "MIXED" if overall_ratio < 0.85 else
+                  "CONTACT-RATE LIMITED ('lucky impact')")
+        print(f"  overall commit/candidate ratio: {overall_ratio:.3f}  ⇒  regime: {regime}")
     return 0
 
 
