@@ -1,0 +1,39 @@
+# JKR-dominant config with saturation blockers removed.
+#
+# Identical to jkr_dominant.yaml except σ_max is raised 50× to ensure
+# triangles never saturate during the run window. This isolates the JKR
+# threshold mechanism from the σ_max early-saturation confound that
+# rounds 1+2 ran into (h=1.0 had FEWER candidates than h=0 because
+# σ_max kicked in faster at higher γ, blocking later attaches).
+
+max_particles: 50000
+n_active_particles: 5000
+grid_res: 64
+domain_size: 1.0
+
+particle_radius: 0.003
+mass_per_particle: 5.0e-6
+
+cloth_nx: 24
+cloth_ny: 24
+cloth_size: 0.5
+cloth_origin: [0.25, 0.50, 0.25]
+cloth_density: 0.3
+
+sand_box_min: [0.30, 0.530, 0.30]
+sand_box_max: [0.70, 0.560, 0.70]
+
+dt: 1.0e-3
+n_substeps: 4
+duration_seconds: 5.0
+
+pinned_corners: [true, true, true, true]
+
+jkr:
+  gamma_0: 2.0
+  beta: 1.0
+  humidity: 0.5
+  sigma_max: 1.0       # 50× higher than jkr_dominant.yaml — effectively unsaturable
+  k_reduced: 1.0e+5
+  lam: 0.003
+  contact_radius: 0.008

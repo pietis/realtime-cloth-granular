@@ -22,14 +22,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
 def run_one_radius(radius: float, steps: int, cpu: bool, humidity: float = 0.6,
-                   config_name: str = "demo_a_lying.yaml") -> dict:
+                   config_name: str = "demo_a_lying.yaml",
+                   seed: int = 42, lam_override: float | None = None) -> dict:
     if cpu:
-        ti.init(arch=ti.cpu)
+        ti.init(arch=ti.cpu, random_seed=seed)
     else:
         try:
-            ti.init(arch=ti.cuda)
+            ti.init(arch=ti.cuda, random_seed=seed)
         except Exception:
-            ti.init(arch=ti.cpu)
+            ti.init(arch=ti.cpu, random_seed=seed)
 
     from src.cloth.xpbd import ClothSolver
     from src.coupling.attach import AttachOperator
@@ -49,6 +50,8 @@ def run_one_radius(radius: float, steps: int, cpu: bool, humidity: float = 0.6,
     cfg = load_scene_config(repo / "data" / "configs" / config_name)
     cfg.particle_radius = radius
     cfg.jkr.humidity = humidity
+    if lam_override is not None:
+        cfg.jkr.lam = lam_override
     # IMPORTANT: hold contact_radius and λ fixed across the sweep so the
     # only thing that varies is R itself. If contact_radius scales with R,
     # larger particles have more far-distance candidates that decay via
@@ -132,30 +135,44 @@ def main() -> int:
     parser.add_argument("--cpu", action="store_true")
     parser.add_argument("--config", type=str, default="demo_a_lying.yaml",
                         help="Config name in data/configs/ (e.g. jkr_dominant.yaml)")
+    parser.add_argument("--seeds", type=str, default="42",
+                        help="Comma-separated seeds for noise estimation.")
+    parser.add_argument("--lam", type=float, default=None,
+                        help="Override JKR distance falloff λ (m). Set ~1.0 to disable "
+                             "the exp(-gap/λ) factor and isolate W_adh∝R^(7/3) scaling.")
     parser.add_argument("--out", default="results/radius_sweep")
     args = parser.parse_args()
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     r_list = [float(x) for x in args.radii.split(",")]
+    seed_list = [int(x) for x in args.seeds.split(",")]
 
-    rows = []
+    grid = []
     for r in r_list:
-        print(f"\n==== Running R = {r*1e3:.2f} mm ====")
-        row = run_one_radius(r, args.steps, args.cpu, args.humidity, args.config)
-        print(f"  attached: {row['n_attached']}, fraction: {row['attach_fraction']:.4f}, "
-              f"σ_total: {row['sigma_total']:.4e}, ΔM/M₀: {row['mass_drift']:.2e}, "
-              f"commit_ratio: {row['commit_ratio']:.3f}")
-        rows.append(row)
+        per_seed = []
+        for s in seed_list:
+            print(f"\n==== Running R = {r*1e3:.2f} mm, seed = {s} ====")
+            row = run_one_radius(r, args.steps, args.cpu, args.humidity, args.config,
+                                 s, args.lam)
+            print(f"  attached: {row['n_attached']}, fraction: {row['attach_fraction']:.4f}, "
+                  f"σ_total: {row['sigma_total']:.4e}, ΔM/M₀: {row['mass_drift']:.2e}, "
+                  f"commit_ratio: {row['commit_ratio']:.3f}")
+            per_seed.append(row)
+        grid.append(per_seed)
 
-    R = np.array([r["radius"] for r in rows])
-    n_attached = np.array([r["n_attached"] for r in rows])
-    fraction = np.array([r["attach_fraction"] for r in rows])
-    mass_drift = np.array([r["mass_drift"] for r in rows])
+    R = np.array(r_list)
+    fraction_grid = np.array([[r["attach_fraction"] for r in row_seeds] for row_seeds in grid])
+    fraction = fraction_grid.mean(axis=1)
+    fraction_std = fraction_grid.std(axis=1)
+    n_attached = np.array([[r["n_attached"] for r in row_seeds] for row_seeds in grid]).mean(axis=1)
+    mass_drift = np.array([[r["mass_drift"] for r in row_seeds] for row_seeds in grid]).mean(axis=1)
 
     np.savez(out_dir / "radius_sweep.npz",
-             radius=R, n_attached=n_attached, fraction=fraction,
-             mass_drift=mass_drift, humidity=args.humidity, steps=args.steps)
+             radius=R, n_attached=n_attached,
+             fraction=fraction, fraction_std=fraction_std, fraction_grid=fraction_grid,
+             mass_drift=mass_drift, humidity=args.humidity,
+             steps=args.steps, seeds=np.array(seed_list))
 
     # Theoretical: log(N) = (7/3) log(R) + const if dominated by JKR threshold scaling.
     # Fit slope of log(fraction) vs log(R) (ignore zeros).
@@ -169,7 +186,18 @@ def main() -> int:
         fit_str = f"slope={slope:.3f} (theory 7/3 ≈ 2.33), R²={r2:.3f}"
 
     fig, (axL, axR) = plt.subplots(1, 2, figsize=(11, 4.5))
-    axL.loglog(R * 1e3, fraction, "o-", color="tab:blue", linewidth=2, label="observed")
+    if len(seed_list) > 1:
+        # log-scale error bars: show min/max range across seeds
+        axL.errorbar(R * 1e3, fraction, yerr=fraction_std, fmt="o-",
+                     color="tab:blue", linewidth=2, capsize=4,
+                     label=f"mean ± std over {len(seed_list)} seeds")
+        for s_idx in range(len(seed_list)):
+            axL.scatter(R * 1e3, fraction_grid[:, s_idx], alpha=0.4, s=20,
+                        color="tab:blue")
+    else:
+        axL.loglog(R * 1e3, fraction, "o-", color="tab:blue", linewidth=2, label="observed")
+    axL.set_xscale("log")
+    axL.set_yscale("log")
     if valid.sum() >= 2:
         R_fit = np.linspace(R.min(), R.max(), 100)
         axL.loglog(R_fit * 1e3, np.exp(intercept) * R_fit ** slope, "--", color="gray",

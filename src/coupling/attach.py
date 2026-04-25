@@ -8,11 +8,12 @@ where E_kin_n is normal-direction kinetic energy at impact.
 
 Implementation pattern: *propose-then-commit*. Each substep:
   1. Each active particle near a triangle proposes an attach event.
-  2. Events are committed (particle deactivated, σ_T += m, p_σ_v += m·v · b_k).
+  2. Events are committed (particle deactivated, σ_T += m, p_σ_v += m·v / 3).
   3. Audit counters track total mass+momentum transferred.
 
-For MVP we use a single-pass approach (race tolerated to ULP — bitwise
-determinism is **not** claimed). Step 5+ adds explicit sort-then-commit.
+Sort-then-commit deterministic ordering. p_sigma uses uniform 1/3 to match
+update_inv_mass; this preserves global momentum and prevents the
+spatial-distribution mismatch with sigma effective-mass.
 """
 
 import taichi as ti
@@ -69,6 +70,12 @@ class AttachOperator:
         self.kin_energy_avg = ti.field(ti.f32, shape=())   # avg of E_kin_n over candidates this frame
         self.threshold_avg = ti.field(ti.f32, shape=())    # avg of W_adh·exp(-d/λ) over candidates
 
+        n_particles = particles.shape[0]
+        self.event_active = ti.field(ti.i32, shape=n_particles)
+        self.event_triangle = ti.field(ti.i32, shape=n_particles)
+        self.event_bary = ti.Vector.field(3, ti.f32, shape=n_particles)
+        self.event_side = ti.field(ti.i32, shape=n_particles)
+
     @ti.kernel
     def reset_audit(self):
         self.mass_attached_this_frame[None] = 0.0
@@ -79,9 +86,10 @@ class AttachOperator:
         self.threshold_avg[None] = 0.0
 
     @ti.kernel
-    def step(self):
-        """One attach pass — propose+commit fused for MVP."""
+    def _propose(self):
+        """Find attach candidates in parallel."""
         for p in range(self.particles.shape[0]):
+            self.event_active[p] = 0
             if self.particles[p].active == 0:
                 continue
 
@@ -137,7 +145,29 @@ class AttachOperator:
                 ti.atomic_add(self.threshold_avg[None], threshold)
 
             if E_kin_n < threshold and sigma_local < self.sigma_max:
-                # Commit attach
+                self.event_active[p] = 1
+                self.event_triangle[p] = best_t
+                self.event_bary[p] = best_bary
+                self.event_side[p] = best_side
+
+    @ti.kernel
+    def _commit(self):
+        """Commit proposed events in deterministic particle-index order."""
+        ti.loop_config(serialize=True)
+        for p in range(self.particles.shape[0]):
+            if self.event_active[p] == 0:
+                continue
+
+            best_t = self.event_triangle[p]
+            best_side = self.event_side[p]
+
+            sigma_local = self.cloth.triangles[best_t].sigma_front
+            if best_side == -1:
+                sigma_local = self.cloth.triangles[best_t].sigma_back
+            if sigma_local >= self.sigma_max:
+                continue
+
+            if self.particles[p].active != 0:
                 m = self.particles[p].mass
                 v = self.particles[p].vel
                 # 1. Deactivate particle
@@ -151,10 +181,16 @@ class AttachOperator:
                 v0 = self.cloth.triangles[best_t].v0
                 v1 = self.cloth.triangles[best_t].v1
                 v2 = self.cloth.triangles[best_t].v2
-                ti.atomic_add(self.cloth.vertices[v0].p_sigma, best_bary[0] * m * v)
-                ti.atomic_add(self.cloth.vertices[v1].p_sigma, best_bary[1] * m * v)
-                ti.atomic_add(self.cloth.vertices[v2].p_sigma, best_bary[2] * m * v)
+                p_share = (1.0 / 3.0) * m * v
+                ti.atomic_add(self.cloth.vertices[v0].p_sigma, p_share)
+                ti.atomic_add(self.cloth.vertices[v1].p_sigma, p_share)
+                ti.atomic_add(self.cloth.vertices[v2].p_sigma, p_share)
                 # 4. Audit
                 ti.atomic_add(self.mass_attached_this_frame[None], m)
                 ti.atomic_add(self.momentum_attached_this_frame[None], m * v)
                 ti.atomic_add(self.attach_event_count[None], 1)
+
+    def step(self):
+        """One attach pass with parallel proposal and serial commit."""
+        self._propose()
+        self._commit()

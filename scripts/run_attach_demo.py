@@ -51,20 +51,28 @@ def main() -> int:
         default="jkr",
         help="Operator to use: 'jkr' (default, Operator A) or 'heuristic' (B1 ablation)",
     )
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Taichi random seed (controls particle init RNG)")
+    parser.add_argument("--lam", type=float, default=None,
+                        help="Override JKR distance falloff λ (m). Set very large (e.g. 1.0) "
+                             "to disable distance penalty and isolate W_adh effect.")
     args = parser.parse_args()
 
     if args.cpu:
-        ti.init(arch=ti.cpu)
+        ti.init(arch=ti.cpu, random_seed=args.seed)
     else:
         try:
-            ti.init(arch=ti.cuda)
+            ti.init(arch=ti.cuda, random_seed=args.seed)
         except Exception:
-            ti.init(arch=ti.cpu)
+            ti.init(arch=ti.cpu, random_seed=args.seed)
 
     cfg = load_scene_config(args.config)
+    if args.lam is not None:
+        cfg.jkr.lam = args.lam
     n_steps = args.steps if args.steps is not None else int(cfg.duration_seconds / cfg.dt)
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    print(f"[attach_demo] seed={args.seed}, λ={cfg.jkr.lam}")
 
     # Sand setup
     particles = make_particle_field(cfg.max_particles)

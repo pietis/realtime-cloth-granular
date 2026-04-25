@@ -197,6 +197,67 @@ d. **Commit-fraction sweep over (γ, v_n)** — varying impact velocity for
 e. Then return to Operator B (release) once attach physics is defensibly
    in JKR-dominant regime.
 
+---
+
+## Round 3 — seed control + multi-seed sweeps + decoupled λ + γ sweep
+
+### Changes
+1. **`--seed N`** added to `scripts/run_attach_demo.py`, `sweep_humidity.py`,
+   `sweep_radius.py`. `ti.init(arch=..., random_seed=seed)` is propagated;
+   `ti.random()` in `init_particles_box` now uses the controlled seed.
+2. **`--seeds 42,43,44`** (multi-seed) added to sweep scripts. Each (parameter,
+   seed) cell is run; mean ± std reported, and per-seed scatter overlaid on
+   the main fit.
+3. **`--lam X`** added to the runner + both sweeps. Setting `--lam 1.0`
+   effectively disables `exp(-gap/λ)` (distance falloff) so the radius
+   sweep tests pure `W_adh ∝ R^(7/3)` scaling.
+4. **`scripts/sweep_gamma.py`** added. Holds R, geometry, mass fixed; only
+   varies γ_0 ∈ {0.5, 1, 2, 4, 8} J/m². Theory predicts attach fraction
+   ∝ γ^(4/3). Multi-seed + log-log fit + commit-ratio plot built in.
+5. Diagnostic-aware: every sweep now records `commit_ratio_grid` and
+   per-seed attach grids in the npz so post-hoc analysis can re-derive
+   noise estimates without rerunning.
+
+### Multi-seed humidity sweep result (`results/humidity_sweep_multiseed/`)
+
+```
+config = jkr_dominant.yaml, 100 steps × 4 substeps, 3 seeds, 5000 particles
+h        seed42  seed43  seed44   mean ± std    commit_ratio (mean)
+0.0      63      76      42       60 ± 14       0.45
+0.5      50      50      61       54 ± 5        0.44
+1.0      36      55      57       49 ± 9        0.41
+
+  signal/noise = 1.15  (target > 2)
+  monotone-in-h: False
+```
+
+Two findings:
+1. **Noise floor is ~10–15 attaches** at N=5000 across seeds. The
+   apparent humidity trend (60 → 49) is barely above noise.
+2. **σ_max early-saturation confound** is real and visible: `n_candidates`
+   decreases from 128 (h=0) to 84 (h=1), because at higher γ first-contact
+   particles attach more readily and saturate the contact triangles
+   *faster* — fewer triangles remain available for later candidates.
+   The naive humidity-vs-attach plot is therefore not a clean test of
+   `γ → W_adh → attach probability`. Need to either (a) raise σ_max to
+   prevent saturation in the run window, or (b) measure pre-saturation
+   attach *rate* (slope of cumulative-attach over time) rather than
+   end-of-run total.
+
+### Decoupled radius sweep (`λ = 1.0`, in progress)
+
+Running `sweep_radius.py --lam 1.0 --seeds 42,43,44` to see if removing
+the distance penalty restores the theoretical R^(7/3) scaling. (Result
+TBD; will update.)
+
+### γ sweep (planned, single-knob, cleanest)
+
+`scripts/sweep_gamma.py` — γ_0 ∈ log-spaced {0.5, 1, 2, 4, 8}, holds
+everything else fixed. Theory: log–log slope = 4/3 ≈ 1.33. Should be
+**less affected by σ_max saturation** because the sweep range hits
+both "few attaches" (low γ) and "many attaches" (high γ) so the
+*growth* with γ is the signal, not the absolute count.
+
 ## Session notes
 
 - The user is travelling; this session is on the dev box (3070, no CUDA).

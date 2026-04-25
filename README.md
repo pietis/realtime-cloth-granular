@@ -1,11 +1,11 @@
-# Real-time Coupling of Discrete Grains and Porous Cloth Manifolds with Hysteretic Mass Transfer
+# Real-time Reversible Mass Transfer between Granular MPM and Thin-shell XPBD Cloth via JKR-thresholded Coupling
 
 > Classical Mechanics I (2026-1) 학기 프로젝트
-> *A JKR-informed cross-solver mass-transfer operator between MPM granular flow and XPBD cloth surface reservoir.*
+> *A surface-reservoir cross-solver coupling operator between MPM granular flow and XPBD thin-shell cloth.*
 
 ## 한 줄 요약
 
-JKR(Johnson-Kendall-Roberts) 부착 에너지를 **XPBD constraint projection의 phase-transition criterion**으로 재정의해서, 모래(MPM) ↔ 천(XPBD) 사이의 **mass + linear momentum 보존적 가역 전이**를 게임 framerate에서 작동시키는 cross-solver coupling operator.
+JKR(Johnson-Kendall-Roberts) pull-off 에너지를 **transfer event의 임계 기준**으로 사용해서, 모래(MPM) ↔ 천(XPBD) 사이의 **mass + linear momentum 보존적 가역 전이**를 게임 framerate에서 작동시키는 cross-solver coupling operator.
 
 ## 무엇이 새로운가
 
@@ -14,7 +14,7 @@ JKR(Johnson-Kendall-Roberts) 부착 에너지를 **XPBD constraint projection의
 1. **Real-time** (≥30 fps, single GPU)
 2. **양방향 가역 전이** (입자 ↔ surface reservoir 왕복)
 3. **Cross-solver heterogeneous coupling** (Eulerian-grid MPM ↔ Lagrangian non-manifold XPBD)
-4. **JKR-as-XPBD-constraint** (force가 아닌 phase-transition criterion으로)
+4. **JKR-thresholded transfer event** (force-loop이 아니라 closed-form pull-off energy로 attach/detach 결정)
 5. **Dynamic mass-bearing reservoir** (단순 visual decal 아니라 천의 동역학을 변화시키는 state variable)
 
 상세 비교는 [계획서.md](계획서.md) §2.2 prior art matrix 참고.
@@ -24,7 +24,7 @@ JKR(Johnson-Kendall-Roberts) 부착 에너지를 **XPBD constraint projection의
 ```
 term_project/
 ├── README.md            # 이 파일 (개요 + 설치/실행)
-├── 계획서.md             # 학기 계획서 v2 (W2-pivot, JKR-as-constraint)
+├── 계획서.md             # 학기 계획서 v3 (W2-pivot, JKR-thresholded transfer event)
 ├── 설명서.md             # 환경 셋업 + 12-step 단계별 매뉴얼 v2
 ├── requirements.txt
 ├── pyproject.toml

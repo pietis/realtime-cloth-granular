@@ -6,7 +6,10 @@ loading) — this is the *dynamic mass-bearing reservoir* novelty from 계획서
 
 Material-frame UVs and per-triangle σ live in `triangle.py`. p_σ (reservoir
 momentum) lives in `vertex.py`. They are *populated* here (effective mass uses
-them) but the actual transfer is in `coupling/attach.py`.
+them) but the actual transfer is in `coupling/attach.py`. Distance constraints
+use real XPBD compliance: `stiffness_distance` is converted to compliance
+`alpha = 1 / stiffness_distance`, scaled by dt², and solved with per-edge
+Lagrange multiplier accumulators reset once per step.
 """
 
 import math
@@ -62,6 +65,7 @@ class ClothSolver:
         self.edge_v0 = ti.field(ti.i32, shape=self.n_edges)
         self.edge_v1 = ti.field(ti.i32, shape=self.n_edges)
         self.edge_rest = ti.field(ti.f32, shape=self.n_edges)
+        self.edge_lambda = ti.field(ti.f32, shape=self.n_edges)
         for i, (a, b) in enumerate(edges):
             self.edge_v0[i] = a
             self.edge_v1[i] = b
@@ -232,8 +236,13 @@ class ClothSolver:
             self.vertices[v].p_sigma = ti.Vector([0.0, 0.0, 0.0])
 
     @ti.kernel
-    def solve_distance(self):
-        """One Gauss-Seidel pass over distance constraints."""
+    def reset_edge_lambda(self):
+        for e in range(self.n_edges):
+            self.edge_lambda[e] = 0.0
+
+    @ti.kernel
+    def solve_distance(self, dt: ti.f32):
+        """One Gauss-Seidel pass over XPBD distance constraints."""
         for e in range(self.n_edges):
             a = self.edge_v0[e]
             b = self.edge_v1[e]
@@ -247,9 +256,13 @@ class ClothSolver:
             if n < 1e-9:
                 continue
             c = n - self.edge_rest[e]
-            corr = (c / n) / w * d * self.stiffness_distance / (self.stiffness_distance + 1.0)
-            self.vertices[a].pred -= wa * corr
-            self.vertices[b].pred += wb * corr
+            alpha = 1.0 / ti.max(self.stiffness_distance, 1e-12)
+            alpha_tilde = alpha / ti.max(dt * dt, 1e-12)
+            delta_lambda = -(c + alpha_tilde * self.edge_lambda[e]) / (w + alpha_tilde)
+            n_dir = d / n
+            self.vertices[a].pred += wa * n_dir * delta_lambda
+            self.vertices[b].pred -= wb * n_dir * delta_lambda
+            self.edge_lambda[e] += delta_lambda
 
     @ti.kernel
     def solve_ground(self):
@@ -274,7 +287,8 @@ class ClothSolver:
         self.update_inv_mass()
         self.reconcile_velocity_with_p_sigma()
         self.predict(dt, ti.Vector([0.0, gravity_y, 0.0]))
+        self.reset_edge_lambda()
         for _ in range(self.n_iterations):
-            self.solve_distance()
+            self.solve_distance(dt)
             self.solve_ground()
         self.update(dt)
