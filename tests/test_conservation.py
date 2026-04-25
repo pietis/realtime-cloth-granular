@@ -4,8 +4,6 @@ This is a tiny CPU-mode test: 1 active particle, 1 cloth triangle, force-low
 JKR threshold so attachment fires deterministically. Total mass before == after.
 """
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 

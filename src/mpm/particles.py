@@ -5,8 +5,6 @@ Preallocated max-N design (no dynamic alloc) — Step 2.3 in 설명서.md.
 `active` flag toggles when particle is absorbed into cloth surface reservoir.
 """
 
-from __future__ import annotations
-
 import taichi as ti
 
 

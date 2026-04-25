@@ -1,7 +1,5 @@
 """Cloth vertex with reservoir momentum p_σ."""
 
-from __future__ import annotations
-
 import taichi as ti
 
 

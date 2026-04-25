@@ -5,8 +5,6 @@ P2G splatters particle mass+momentum into grid nodes; G2P interpolates back.
 We use a 3x3x3 quadratic B-spline kernel (MLS-MPM convention).
 """
 
-from __future__ import annotations
-
 import taichi as ti
 
 

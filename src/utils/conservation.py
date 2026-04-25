@@ -4,8 +4,6 @@ For Step 9 we will add a full theorem proof + double-precision audit. For MVP
 we use single-precision, which is enough to detect 1% drift over 10k frames.
 """
 
-from __future__ import annotations
-
 import taichi as ti
 
 

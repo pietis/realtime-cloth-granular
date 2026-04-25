@@ -1,7 +1,5 @@
 """Sanity: every module imports and Taichi initializes (CPU fallback)."""
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 

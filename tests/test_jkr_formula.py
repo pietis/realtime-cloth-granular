@@ -3,8 +3,6 @@
 Both must agree to within ULP-level tolerance over a parameter sweep.
 """
 
-from __future__ import annotations
-
 import math
 import sys
 from pathlib import Path

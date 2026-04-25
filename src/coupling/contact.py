@@ -8,8 +8,6 @@ For broad phase we use a uniform spatial hash on cloth triangle centroids.
 For narrow phase we use closest-point-on-triangle from `cloth.triangle`.
 """
 
-from __future__ import annotations
-
 import taichi as ti
 
 from ..cloth.triangle import (

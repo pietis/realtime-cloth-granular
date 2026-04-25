@@ -15,8 +15,6 @@ For MVP we use a single-pass approach (race tolerated to ULP — bitwise
 determinism is **not** claimed). Step 5+ adds explicit sort-then-commit.
 """
 
-from __future__ import annotations
-
 import taichi as ti
 
 from ..cloth.triangle import closest_point_on_triangle, triangle_normal

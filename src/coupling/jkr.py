@@ -10,8 +10,6 @@ Two parallel implementations:
 Both must agree to ULP — see tests/test_jkr_formula.py.
 """
 
-from __future__ import annotations
-
 import math
 
 import numpy as np
@@ -69,8 +67,8 @@ def gamma_humid_np(
 # ---- Taichi versions (callable from kernels) -----------------------------------------
 
 @ti.func
-def jkr_pulloff_work(radius: ti.f32, gamma: ti.f32, k_reduced: ti.f32) -> ti.f32:
-    """JKR pull-off work — Taichi @ti.func form."""
+def jkr_pulloff_work(radius, gamma, k_reduced):
+    """JKR pull-off work — Taichi @ti.func form (untyped, inferred at call site)."""
     result = 0.0
     if radius > 0.0 and gamma > 0.0 and k_reduced > 0.0:
         factor = ti.pow(3.0 * 3.14159265 * gamma * radius / (4.0 * k_reduced), 1.0 / 3.0)
@@ -79,13 +77,7 @@ def jkr_pulloff_work(radius: ti.f32, gamma: ti.f32, k_reduced: ti.f32) -> ti.f32
 
 
 @ti.func
-def gamma_humid(
-    gamma_0: ti.f32,
-    beta: ti.f32,
-    humidity: ti.f32,
-    sigma_local: ti.f32,
-    sigma_max: ti.f32,
-) -> ti.f32:
+def gamma_humid(gamma_0, beta, humidity, sigma_local, sigma_max):
     """Humidity-dependent surface energy — Taichi @ti.func form."""
     saturation_factor = ti.max(0.0, 1.0 - sigma_local / ti.max(sigma_max, 1e-12))
     h_clamped = ti.max(0.0, ti.min(1.0, humidity))

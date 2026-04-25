@@ -8,8 +8,6 @@ This is a *baseline* implementation — sufficient for Step 2 verification (sand
 piles up in a box at game framerate). Replaceable by PB-MPM (Step 11).
 """
 
-from __future__ import annotations
-
 import taichi as ti
 
 from .grid import Grid
@@ -125,7 +123,7 @@ class SandSolver:
             self.particles[p].F = self._return_mapping(new_F, p)
 
     @ti.func
-    def _return_mapping(self, F: ti.types.matrix(3, 3, ti.f32), p: ti.i32) -> ti.types.matrix(3, 3, ti.f32):
+    def _return_mapping(self, F, p):
         """Drucker-Prager return mapping on F's singular values."""
         U, sig, V = ti.svd(F, ti.f32)
         # Clamp positive (avoid inversion artifacts)

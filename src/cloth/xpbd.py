@@ -9,8 +9,6 @@ momentum) lives in `vertex.py`. They are *populated* here (effective mass uses
 them) but the actual transfer is in `coupling/attach.py`.
 """
 
-from __future__ import annotations
-
 import math
 
 import numpy as np
@@ -52,6 +50,9 @@ class ClothSolver:
 
         self.vertices = make_vertex_field(self.n_vertices)
         self.triangles = make_triangle_field(self.n_triangles)
+
+        # Per-vertex tmp for σ aggregation in update_inv_mass
+        self.added_sigma = ti.field(ti.f32, shape=self.n_vertices)
 
         # Distance constraints (edges)
         # Built once at init; stored as flat fields
@@ -188,32 +189,27 @@ class ClothSolver:
 
     @ti.kernel
     def update_inv_mass(self):
-        """inv_mass = 1 / (vertex_mass + Σ_T (σ_front + σ_back)·area·w_vT)."""
+        """inv_mass = 1 / (vertex_mass + Σ_T (σ_front + σ_back)·w_vT).
+
+        Two-pass:
+          (1) reset added_sigma_per_vertex to 0
+          (2) atomic-add per-vertex 1/3 contribution from each triangle's σ
+          (3) inv_mass = 1 / (mass + added_sigma)
+        """
+        for v in range(self.n_vertices):
+            self.added_sigma[v] = 0.0
+        for t in range(self.n_triangles):
+            sigma_total = self.triangles[t].sigma_front + self.triangles[t].sigma_back
+            if sigma_total > 1e-12:
+                third = sigma_total / 3.0
+                ti.atomic_add(self.added_sigma[self.triangles[t].v0], third)
+                ti.atomic_add(self.added_sigma[self.triangles[t].v1], third)
+                ti.atomic_add(self.added_sigma[self.triangles[t].v2], third)
         for v in range(self.n_vertices):
             if self.vertices[v].fixed == 1:
                 self.vertices[v].inv_mass = 0.0
-                continue
-            self.vertices[v].inv_mass = 1.0 / ti.max(self.vertices[v].mass, 1e-12)
-
-        # Two-pass aggregation: each triangle contributes 1/3 of σ to each vertex.
-        # We store "added mass" via inv_mass adjustment.
-        # First, re-accumulate denominator in a tmp:
-        # (Implementation note: we use atomic add on a tmp inv_mass scalar form.
-        #  For MVP we just bake σ into inv_mass via a second loop.)
-        for t in range(self.n_triangles):
-            sigma_total = self.triangles[t].sigma_front + self.triangles[t].sigma_back
-            if sigma_total <= 1e-12:
-                continue
-            third = sigma_total / 3.0
-            v0 = self.triangles[t].v0
-            v1 = self.triangles[t].v1
-            v2 = self.triangles[t].v2
-            for v in [v0, v1, v2]:
-                if self.vertices[v].fixed == 1:
-                    continue
-                # Convert inv_mass back to mass, add σ contribution, re-invert.
-                m = 1.0 / ti.max(self.vertices[v].inv_mass, 1e-12)
-                m += third
+            else:
+                m = self.vertices[v].mass + self.added_sigma[v]
                 self.vertices[v].inv_mass = 1.0 / ti.max(m, 1e-12)
 
     @ti.kernel

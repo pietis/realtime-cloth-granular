@@ -4,8 +4,6 @@ Material-frame σ avoids swimming under cloth deformation — see 설명서.md S
 Front/back separation lets each side accumulate independently.
 """
 
-from __future__ import annotations
-
 import taichi as ti
 
 
@@ -28,7 +26,7 @@ def make_triangle_field(n: int) -> ti.StructField:
 
 
 @ti.func
-def triangle_normal(triangles: ti.template(), vertices: ti.template(), t: ti.i32):
+def triangle_normal(triangles: ti.template(), vertices: ti.template(), t):
     """Outward normal of triangle t in current pose."""
     p0 = vertices[triangles[t].v0].pos
     p1 = vertices[triangles[t].v1].pos
@@ -37,7 +35,7 @@ def triangle_normal(triangles: ti.template(), vertices: ti.template(), t: ti.i32
 
 
 @ti.func
-def triangle_centroid(triangles: ti.template(), vertices: ti.template(), t: ti.i32):
+def triangle_centroid(triangles: ti.template(), vertices: ti.template(), t):
     p0 = vertices[triangles[t].v0].pos
     p1 = vertices[triangles[t].v1].pos
     p2 = vertices[triangles[t].v2].pos
@@ -45,7 +43,7 @@ def triangle_centroid(triangles: ti.template(), vertices: ti.template(), t: ti.i
 
 
 @ti.func
-def triangle_area(triangles: ti.template(), vertices: ti.template(), t: ti.i32) -> ti.f32:
+def triangle_area(triangles: ti.template(), vertices: ti.template(), t):
     p0 = vertices[triangles[t].v0].pos
     p1 = vertices[triangles[t].v1].pos
     p2 = vertices[triangles[t].v2].pos
@@ -56,8 +54,8 @@ def triangle_area(triangles: ti.template(), vertices: ti.template(), t: ti.i32) 
 def closest_point_on_triangle(
     triangles: ti.template(),
     vertices: ti.template(),
-    t: ti.i32,
-    q: ti.types.vector(3, ti.f32),
+    t,
+    q,
 ):
     """Closest point on triangle t to query point q. Returns (closest_point, bary)."""
     p0 = vertices[triangles[t].v0].pos
