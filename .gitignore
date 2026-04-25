@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Taichi cache
+.taichi/
+
+# External clones
+external/
+
+# Result artifacts
+results/videos/
+results/plots/
+results/ablation_logs/
+results/*.npz
+results/*.mp4
+results/*.png
+results/.gitkeep
+
+# Notebook outputs
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# Build artifacts
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local secrets (never commit)
+.env
+.env.local
+*.pem

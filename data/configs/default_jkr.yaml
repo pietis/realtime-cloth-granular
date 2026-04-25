@@ -1,0 +1,41 @@
+# Default scene + JKR parameters.
+# Tuned for RTX 3070 (8GB) prototyping. Switch to "rtx4080.yaml" at home for full scale.
+#
+# JKR physical units:
+#   gamma_0  : J/m²    (dry surface energy, sand-on-cotton typical 0.01-0.1)
+#   beta     : J/m²    (capillary slope: γ = γ_0 + β·h·(1 - σ/σ_max))
+#   sigma_max: kg      (per-triangle saturation cap)
+#   k_reduced: Pa      (reduced modulus, combined sand+cloth Young's)
+#   lam      : m       (distance falloff in attach criterion)
+
+max_particles: 50000
+n_active_particles: 5000
+grid_res: 64
+domain_size: 1.0
+
+particle_radius: 0.005
+mass_per_particle: 1.0e-4
+
+cloth_nx: 32
+cloth_ny: 32
+cloth_size: 0.5
+cloth_origin: [0.25, 0.6, 0.25]
+cloth_density: 0.3
+
+sand_box_min: [0.30, 0.05, 0.30]
+sand_box_max: [0.70, 0.20, 0.70]
+
+dt: 1.0e-3
+n_substeps: 4
+duration_seconds: 30.0
+
+pinned_corners: [false, false, false, false]
+
+jkr:
+  gamma_0: 0.05
+  beta: 0.10
+  humidity: 0.0
+  sigma_max: 0.05
+  k_reduced: 1.0e+6
+  lam: 0.005
+  contact_radius: 0.015

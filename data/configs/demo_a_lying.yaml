@@ -1,0 +1,36 @@
+# Demo (a) — cloth pinned at four corners horizontally above sand box,
+# sand falls + gets caught + sticks per JKR.
+
+max_particles: 50000
+n_active_particles: 8000
+grid_res: 64
+domain_size: 1.0
+
+particle_radius: 0.005
+mass_per_particle: 1.0e-4
+
+cloth_nx: 24
+cloth_ny: 24
+cloth_size: 0.6
+cloth_origin: [0.20, 0.50, 0.20]
+cloth_density: 0.3
+
+# Sand spawns ABOVE the cloth so it falls onto it
+sand_box_min: [0.30, 0.70, 0.30]
+sand_box_max: [0.70, 0.85, 0.70]
+
+dt: 1.0e-3
+n_substeps: 4
+duration_seconds: 8.0
+
+# Pin all four cloth corners — cloth holds horizontally
+pinned_corners: [true, true, true, true]
+
+jkr:
+  gamma_0: 0.08
+  beta: 0.20
+  humidity: 0.3       # mildly humid → sand sticks more
+  sigma_max: 0.08
+  k_reduced: 1.0e+6
+  lam: 0.005
+  contact_radius: 0.020
